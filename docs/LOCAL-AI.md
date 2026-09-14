@@ -75,3 +75,18 @@ cargo test --lib local_services_round_trip -- --ignored
 ```
 
 Optional `MEETINGAI_TEST_OLLAMA_URL` and `MEETINGAI_TEST_WHISPER_URL` select alternative loopback ports. No real meeting or key is included in the fixture. Tests verify connector behavior; they are not an accuracy benchmark across languages and hardware.
+
+## Configurations checked on 14 September 2026
+
+These are small synthetic integration checks on an Apple Silicon Mac, using Ollama 0.31.1 and whisper.cpp 1.8.6. They establish that the connectors work, not accuracy on arbitrary meetings.
+
+| Configuration | Observed result |
+|---|---|
+| whisper.cpp `ggml-base.en.bin` | Correctly recognized the English report/Friday/draft fixture through the native multipart bridge and through the app's chunked speech session. This English-only model does not validate Hindi recognition. |
+| Ollama `qwen3.5:4b-mlx` | Model discovery, structured summary, and English → Spanish translation passed. “Friday” remained “viernes.” |
+| Ollama `qwen3.5:4b-mlx`, English → Hindi | Failed a meaning check: “Friday” became “Wednesday.” Do not use this tested configuration for important Hindi translations without reviewing the output. |
+| Ollama `qwen3-vl:4b` | Basic native chat passed; the summary fixture exhausted the 2,048-token output limit despite `think: false`. The app surfaced an error instead of saving incomplete output. |
+
+The UI also passed model discovery, connection checks, local speech draining, and rejecting a LAN address before any request was sent. No Gemini key or Gemini request was used in those local tests. Public source tests cover both microphone and system-audio routing, persistence, queue overflow, and failure isolation with mocks. Native permission and microphone behavior still need a short test on each user's computer.
+
+Use a multilingual Whisper model for Hindi speech. Choose an Ollama model based on a known sentence in your actual languages, including names and dates, rather than treating a successful connection test as a quality check.
