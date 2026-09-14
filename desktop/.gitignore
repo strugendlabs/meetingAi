@@ -1,0 +1,17 @@
+# Node
+node_modules
+dist
+
+# Logs
+*.log
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Local admin config — never commit real keys
+.env
+.env.*
+!.env.example

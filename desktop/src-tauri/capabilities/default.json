@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the main window. sql:allow-execute is required by src/lib/db.ts (parameterized INSERT/UPDATE writes); the sql plugin ACL has no per-database or per-statement scoping, so the grant stays unscoped and the webview CSP (tauri.conf.json) is the compensating control. The shell and notification plugins are intentionally NOT granted: the system-audio sidecar is spawned Rust-side (audio_bridge.rs via std::process::Command) and meeting-start notifications are deferred to v2.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "sql:default",
+    "sql:allow-execute",
+    "store:default",
+    "opener:default"
+  ]
+}

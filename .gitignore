@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+
+# Swift sidecar build artifacts
+desktop/sidecar/.build/
+
+# Windows sidecar is generated on a Windows build host.
+desktop/src-tauri/binaries/system-audio-*.exe
+
+# Claude Code local state
+**/.claude/scheduled_tasks.lock
+**/.claude/*.lock
+
+# Code-review-graph local index
+**/.code-review-graph/
+
+# Private inputs, exports and generated releases
+.env
+.env.*
+!.env.example
+/output/
+/release/*.dmg
+/release/*.zip
+/release/macos-public/
+**/*.p12
+**/*.pfx
+**/*.pem
+**/*.key
+
+# Build generated native executables locally
+/desktop/src-tauri/binaries/system-audio-*
+
+# Private development planning and local tool state
+/desktop/docs/superpowers/
+**/.claude/

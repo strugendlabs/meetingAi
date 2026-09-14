@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MeetingAI uses your microphone to transcribe your side of the meeting.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>MeetingAI captures system audio to transcribe and translate the other meeting participants.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>MeetingAI uses screen capture solely to record system audio from your meeting apps. No video is recorded.</string>
+</dict>
+</plist>

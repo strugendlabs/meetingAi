@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/* ————————————————————————————————————————————————
+   MeetingAI token system
+   Two voices, two registers:
+   original speech  → upright grotesk, ink
+   translated speech → italic serif, ultramarine
+   ———————————————————————————————————————————————— */
+
+:root {
+  --paper: #f6f5f1;
+  --raised: #ffffff;
+  --ink: #1b1e1c;
+  --ink-soft: #5b615c;
+  --line: #e2e0d7;
+  --accent: #3843ce;
+  --accent-strong: #2a33a6;
+  --wash: #e9eafb;
+  --live: #1f9d63;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101319;
+    --raised: #171b23;
+    --ink: #eae9e2;
+    --ink-soft: #9aa0a7;
+    --line: #262b34;
+    --accent: #9aa4ff;
+    --accent-strong: #bdc4ff;
+    --wash: #232849;
+    --live: #37c98c;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-inksoft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accentstrong: var(--accent-strong);
+  --color-wash: var(--wash);
+  --color-live: var(--live);
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-newsreader), ui-serif, Georgia, serif;
+  --font-mono: var(--font-spline), ui-monospace, "SF Mono", monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Translated speech — the site-wide register for anything MeetingAI says
+   in the listener's language. */
+.translated {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--accent);
+  letter-spacing: 0.005em;
+}
+
+/* Animated equalizer bars — the translated voice, speaking. */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+.eq span {
+  width: 2.5px;
+  border-radius: 2px;
+  background: var(--accent);
+  height: 100%;
+  transform-origin: bottom;
+  animation: eqbar 0.9s ease-in-out infinite;
+}
+.eq span:nth-child(1) { animation-delay: 0s; }
+.eq span:nth-child(2) { animation-delay: 0.18s; }
+.eq span:nth-child(3) { animation-delay: 0.36s; }
+.eq span:nth-child(4) { animation-delay: 0.1s; }
+.eq span:nth-child(5) { animation-delay: 0.27s; }
+
+@keyframes eqbar {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+.live-dot {
+  animation: pulsedot 1.6s ease-in-out infinite;
+}
+@keyframes pulsedot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.type-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--ink-soft);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.fade-up {
+  animation: fadeup 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes fadeup {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
