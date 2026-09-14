@@ -1,6 +1,6 @@
 # MeetingAI website
 
-Static Next.js site for the MIT-licensed [MeetingAI source](https://github.com/triyam/meetingAi). Messaging distinguishes Gemini BYOK from local Whisper + Ollama. Transcript animation is an illustrative sample, not a live model call.
+Static Next.js site for the MIT-licensed [MeetingAI source](https://github.com/strugendlabs/meetingAi). Messaging distinguishes Gemini BYOK from local Whisper + Ollama. Transcript animation is an illustrative sample, not a live model call.
 
 ```bash
 npm ci
@@ -23,9 +23,9 @@ The GitHub source links work without a binary release. No hosting provider is co
 Upload a signed/notarized DMG and checksum to a versioned GitHub Release. Supply its exact HTTPS asset URLs when building the website:
 
 ```dotenv
-NEXT_PUBLIC_DOWNLOAD_URL=https://github.com/triyam/meetingAi/releases/download/v0.1.0/MeetingAI_0.1.0_aarch64.dmg
+NEXT_PUBLIC_DOWNLOAD_URL=https://github.com/strugendlabs/meetingAi/releases/download/v0.1.0/MeetingAI_0.1.0_aarch64.dmg
 NEXT_PUBLIC_MAC_NOTARIZED=true
-NEXT_PUBLIC_MAC_CHECKSUM_URL=https://github.com/triyam/meetingAi/releases/download/v0.1.0/MeetingAI_0.1.0_aarch64.dmg.sha256
+NEXT_PUBLIC_MAC_CHECKSUM_URL=https://github.com/strugendlabs/meetingAi/releases/download/v0.1.0/MeetingAI_0.1.0_aarch64.dmg.sha256
 NEXT_PUBLIC_APP_VERSION=0.1.0
 ```
 

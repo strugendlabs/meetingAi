@@ -21,7 +21,7 @@ export default function Hero() {
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link
-              href="https://github.com/triyam/meetingAi"
+              href="https://github.com/strugendlabs/meetingAi"
               className="rounded-full bg-accent px-6 py-3 text-[15px] font-medium text-paper transition-colors hover:bg-accentstrong"
             >
               Get the source on GitHub

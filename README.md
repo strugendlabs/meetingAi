@@ -38,7 +38,7 @@ Recognition and summaries can be wrong, especially with overlapping speech, name
 Requires Apple Silicon, macOS 13+, Node.js 22+, Rust stable, and Xcode Command Line Tools (including Swift).
 
 ```bash
-git clone https://github.com/triyam/meetingAi.git
+git clone https://github.com/strugendlabs/meetingAi.git
 cd meetingAi/desktop
 npm ci
 ./scripts/build-sidecar.sh

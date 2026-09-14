@@ -42,7 +42,7 @@ export default function Footer() {
                 Legal
               </p>
               <ul className="mt-3 space-y-2 text-[13.5px]">
-                <li><a href="https://github.com/triyam/meetingAi" className="text-inksoft hover:text-ink">Source · MIT</a></li>
+                <li><a href="https://github.com/strugendlabs/meetingAi" className="text-inksoft hover:text-ink">Source · MIT</a></li>
                 <li>
                   <Link href="/privacy" className="text-inksoft transition-colors hover:text-ink">
                     Privacy

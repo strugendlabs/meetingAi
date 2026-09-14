@@ -17,6 +17,6 @@ export default function PrivacyPage() {
     <div className="mt-12 max-w-2xl space-y-10">{sections.map(s => <section key={s.heading}>
       <h2 className="text-lg font-semibold">{s.heading}</h2><p className="mt-3 text-[14.5px] leading-relaxed text-inksoft">{s.body}</p>
     </section>)}</div>
-    <a href="https://github.com/triyam/meetingAi/blob/main/PRIVACY.md" className="mt-10 inline-block text-sm text-accent underline underline-offset-4">Read the privacy document with the source</a>
+    <a href="https://github.com/strugendlabs/meetingAi/blob/main/PRIVACY.md" className="mt-10 inline-block text-sm text-accent underline underline-offset-4">Read the privacy document with the source</a>
   </div>;
 }

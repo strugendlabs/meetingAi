@@ -169,7 +169,7 @@ export default function DownloadPage() {
       <div className="mt-8 rounded-2xl border border-accent/40 bg-wash p-7">
         <h2 className="text-lg font-semibold">Build it. Inspect it. Make it yours.</h2>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-inksoft">The source and setup instructions are on GitHub. Apple Silicon is the tested platform. Installable releases will appear below when they have been signed and verified.</p>
-        <a href="https://github.com/triyam/meetingAi" className="mt-5 inline-block rounded-full bg-accent px-6 py-3 text-sm font-medium text-paper">Get the source on GitHub</a>
+        <a href="https://github.com/strugendlabs/meetingAi" className="mt-5 inline-block rounded-full bg-accent px-6 py-3 text-sm font-medium text-paper">Get the source on GitHub</a>
       </div>
       <div className="mt-12 grid gap-6 lg:grid-cols-2">
         <ReleaseCard

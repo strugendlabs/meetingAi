@@ -15,7 +15,7 @@ function Providers() {
           <p className="mt-4 text-[15px] leading-relaxed text-inksoft">Whisper transcribes the audio. Your downloaded Ollama model writes the summary and translates text. MeetingAI accepts local servers only and never falls back to the cloud.</p>
           <p className="mt-6 rounded-lg border border-accent/20 bg-paper px-4 py-3 font-mono text-xs leading-relaxed">Audio → local Whisper → local Ollama → your notes</p>
           <p className="mt-5 text-sm leading-relaxed text-inksoft">Two local servers to set up. No API key. Download models first; keep optional Calendar disconnected for offline use.</p>
-          <a href="https://github.com/triyam/meetingAi/blob/main/docs/LOCAL-AI.md" className="mt-6 inline-block text-sm font-medium text-accent underline underline-offset-4">Set up local AI</a>
+          <a href="https://github.com/strugendlabs/meetingAi/blob/main/docs/LOCAL-AI.md" className="mt-6 inline-block text-sm font-medium text-accent underline underline-offset-4">Set up local AI</a>
         </article>
         <article className="rounded-2xl border border-line bg-raised p-7 sm:p-9">
           <p className="font-mono text-[11px] uppercase tracking-widest text-inksoft">Your Google account</p>
@@ -51,7 +51,7 @@ export default function Home() {
       <div className="mx-auto max-w-6xl rounded-3xl bg-wash px-6 py-14 text-center">
         <h2 className="font-display text-4xl tracking-tight">Your notes belong to you.</h2>
         <p className="mx-auto mt-5 max-w-md text-[15px] leading-relaxed text-inksoft">MIT licensed. No MeetingAI subscription. Local storage and an explicit choice of where inference happens.</p>
-        <a href="https://github.com/triyam/meetingAi" className="mt-7 inline-block rounded-full bg-accent px-7 py-3 text-sm font-medium text-paper">Explore the source</a>
+        <a href="https://github.com/strugendlabs/meetingAi" className="mt-7 inline-block rounded-full bg-accent px-7 py-3 text-sm font-medium text-paper">Explore the source</a>
       </div>
     </section>
   </>;
