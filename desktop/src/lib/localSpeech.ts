@@ -22,7 +22,7 @@ export class LocalSpeechSession implements SpeechSession {
   private queued = 0;
   private work = Promise.resolve();
   private overflowReported = false;
-  constructor(private baseUrl: string = WHISPER_DEFAULT_URL, private opts: Pick<LiveSessionOpts, "onTranscript" | "onError" | "onClose">, private elapsed: () => number) {}
+  constructor(private baseUrl: string = WHISPER_DEFAULT_URL, private opts: Pick<LiveSessionOpts, "onTranscript" | "onError" | "onClose">, private elapsed: () => number, private language = "auto") {}
   get isOpen() { return !this.closed && !this.finishing; }
   get dead() { return this.closed; }
 
@@ -56,7 +56,7 @@ export class LocalSpeechSession implements SpeechSession {
     this.queued++;
     this.work = this.work.then(async () => {
       if (this.closed) return;
-      const text = await transcribeLocal(this.baseUrl, pcm);
+      const text = await transcribeLocal(this.baseUrl, pcm, this.language);
       if (text && !this.closed) {
         const event: TranscriptEvent = { kind: "final", tStart: start, tEnd: start + count / 16 };
         this.opts.onTranscript?.(text, event);

@@ -56,14 +56,21 @@ pub async fn local_ai_request(base_url: String, route: String, body: Option<Valu
 }
 
 #[tauri::command]
-pub async fn local_speech_transcribe(base_url: String, wav_base64: String) -> Result<Value, String> {
+pub async fn local_speech_transcribe(base_url: String, wav_base64: String, language: Option<String>) -> Result<Value, String> {
     let url = endpoint(&base_url, "/inference")?;
     if wav_base64.len() > 2_000_000 { return Err("Audio chunk exceeds the local recognition limit".into()); }
     let audio = STANDARD.decode(wav_base64).map_err(|_| "Invalid WAV audio")?;
     if audio.len() < 44 || &audio[..4] != b"RIFF" || &audio[8..12] != b"WAVE" { return Err("Expected WAV audio".into()); }
+    let language = language.unwrap_or_else(|| "auto".into());
+    if language != "auto" && (!(2..=3).contains(&language.len()) || !language.bytes().all(|b| b.is_ascii_lowercase())) {
+        return Err("Choose a valid spoken-language code or auto detection".into());
+    }
     let file = multipart::Part::bytes(audio).file_name("speech.wav").mime_str("audio/wav").map_err(|_| "Invalid audio type")?;
-    let form = multipart::Form::new().part("file", file).text("response_format", "json")
-        .text("language", "auto").text("translate", "false").text("temperature", "0");
+    let mut form = multipart::Form::new().part("file", file).text("response_format", "json")
+        .text("language", language.clone()).text("translate", "false").text("temperature", "0");
+    // A script hint helps Hindi output stay in Devanagari rather than Urdu.
+    // It contains no invented meeting facts, vocabulary, or participant names.
+    if language == "hi" { form = form.text("prompt", "यह हिंदी में बातचीत है।"); }
     read_response(client()?.post(url).multipart(form).send().await.map_err(connection_error)?).await
 }
 
@@ -98,10 +105,12 @@ mod tests {
             }))).await.unwrap();
             assert!(chat["message"]["content"].as_str().unwrap().contains("LOCAL_OK"));
             let audio = std::fs::read(std::env::var("MEETINGAI_TEST_WAV").expect("set MEETINGAI_TEST_WAV")).unwrap();
-            let text = local_speech_transcribe(whisper, STANDARD.encode(audio)).await.unwrap();
+            let text = local_speech_transcribe(whisper, STANDARD.encode(audio), std::env::var("MEETINGAI_TEST_LANGUAGE").ok()).await.unwrap();
             let recognized = text["text"].as_str().unwrap().to_lowercase();
-            assert!(recognized.contains("friday"), "synthetic fixture should mention Friday: {recognized}");
-            assert!(recognized.contains("draft"), "synthetic fixture should mention a draft: {recognized}");
+            let expected = std::env::var("MEETINGAI_TEST_WORDS").unwrap_or("friday,draft".into());
+            for word in expected.split(',').map(str::trim).filter(|word| !word.is_empty()) {
+                assert!(recognized.contains(&word.to_lowercase()), "synthetic fixture should contain {word}: {recognized}");
+            }
         });
     }
 }

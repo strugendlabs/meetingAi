@@ -50,7 +50,7 @@ Create a local app bundle with `npm run tauri build`. Generated binaries are int
 In onboarding or **Settings → Your AI, your choice**, choose:
 
 - **Gemini · BYOK**: enter your own key from [Google AI Studio](https://aistudio.google.com/apikey). It goes into the OS credential vault. Builds do not embed developer `.env` credentials.
-- **Local · Ollama**: follow [the local setup guide](docs/LOCAL-AI.md), refresh models, choose a downloaded model, and test both connections. No Gemini key is needed.
+- **Local · Ollama**: follow [the local setup guide](docs/LOCAL-AI.md), refresh models, choose a downloaded model, and test both connections. No Gemini key is needed. Choose the spoken language in the Whisper settings separately from your summary language.
 
 ## Windows source builds (experimental)
 

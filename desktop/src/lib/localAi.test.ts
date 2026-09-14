@@ -46,6 +46,16 @@ describe("local inference boundary", () => {
     expect(wav.getInt16(44, true)).toBe(-32768);
     expect(wav.getInt16(48, true)).toBe(32767);
   });
+  it("forwards the spoken language separately from the summary language", async () => {
+    invoke.mockResolvedValue({ text: "शुक्रवार को रिपोर्ट भेजेंगे।" });
+    await transcribeLocal("http://localhost:8080", new Int16Array(3200), "hi");
+    expect(invoke).toHaveBeenCalledWith("local_speech_transcribe", expect.objectContaining({ language: "hi" }));
+  });
+  it.each([["pt-BR", "pt"], ["zh-TW", "zh"], ["nb", "no"], ["fil", "tl"]])("maps %s to Whisper's %s language ID", async (input, expected) => {
+    invoke.mockResolvedValue({ text: "speech" });
+    await transcribeLocal("http://localhost:8080", new Int16Array(3200), input);
+    expect(invoke).toHaveBeenCalledWith("local_speech_transcribe", expect.objectContaining({ language: expected }));
+  });
   it("requires an actual Whisper response", async () => {
     invoke.mockResolvedValue({ error: "server misconfigured" });
     await expect(transcribeLocal("http://localhost:8080", new Int16Array(3200))).rejects.toThrow("did not return");

@@ -136,7 +136,7 @@ export default function Onboarding() {
         <LanguageStep
           key="your-language"
           title="Your language"
-          subtitle="Transcripts and the translated voice will be in this language."
+          subtitle="Summaries and translations use this language. Speech recognition keeps the original words."
           value={settings.userLanguage}
           onChange={(code) => settings.update({ userLanguage: code })}
         />

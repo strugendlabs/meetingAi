@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ollamaUrl: "http://127.0.0.1:11434",
   ollamaModel: "",
   whisperUrl: "http://127.0.0.1:8080",
+  whisperLanguage: "auto",
   userLanguage: "en",
   otherLanguage: "auto",
   voiceGenderMode: "auto",

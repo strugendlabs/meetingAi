@@ -444,7 +444,7 @@ export class MeetingSession {
   private async connectRecognition(speaker: Speaker): Promise<{ session: SpeechSession; model: string }> {
     const opts = this.sttOpts(speaker);
     if (!isLocalAI(this.settings)) return connectLiveWithFallback(opts);
-    const session = new LocalSpeechSession(this.settings.whisperUrl || WHISPER_DEFAULT_URL, opts, () => this.elapsed());
+    const session = new LocalSpeechSession(this.settings.whisperUrl || WHISPER_DEFAULT_URL, opts, () => this.elapsed(), this.settings.whisperLanguage || "auto");
     opts.onOpen?.();
     return { session, model: "local-whisper" };
   }
@@ -565,6 +565,9 @@ export class MeetingSession {
   }
 
   private segmentLang(speaker: Speaker): string | undefined {
+    if (isLocalAI(this.settings)) {
+      return this.settings.whisperLanguage && this.settings.whisperLanguage !== "auto" ? this.settings.whisperLanguage : undefined;
+    }
     // Preferred output language is not evidence of the language spoken.
     if (speaker === "me") return undefined;
     // "them": unknown when auto-detecting.

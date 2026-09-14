@@ -68,8 +68,14 @@ export function wavBase64(pcm: Int16Array): string {
   return btoa(binary);
 }
 
-export async function transcribeLocal(baseUrl: string, pcm: Int16Array): Promise<string> {
-  const result = await safeInvoke<{ text?: unknown }>("local_speech_transcribe", { baseUrl: validateLocalUrl(baseUrl), wavBase64: wavBase64(pcm) });
+/** whisper.cpp uses language IDs rather than regional BCP-47 tags. */
+export function whisperLanguageCode(language: string): string {
+  const base = language.toLowerCase().split("-")[0];
+  return ({ nb: "no", fil: "tl" } as Record<string, string>)[base] ?? base;
+}
+
+export async function transcribeLocal(baseUrl: string, pcm: Int16Array, language = "auto"): Promise<string> {
+  const result = await safeInvoke<{ text?: unknown }>("local_speech_transcribe", { baseUrl: validateLocalUrl(baseUrl), wavBase64: wavBase64(pcm), language: whisperLanguageCode(language) });
   if (!result || typeof result.text !== "string") throw new Error("Whisper did not return transcript text. Check its URL and model in Settings.");
   return result.text.trim();
 }

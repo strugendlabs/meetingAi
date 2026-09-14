@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { checkOllamaModel, isLocalAI, listOllamaModels, OLLAMA_DEFAULT_URL, transcribeLocal, WHISPER_DEFAULT_URL } from "../lib/localAi";
+import { checkOllamaModel, isLocalAI, listOllamaModels, OLLAMA_DEFAULT_URL, transcribeLocal, WHISPER_DEFAULT_URL, whisperLanguageCode } from "../lib/localAi";
+import { LANGUAGES } from "../lib/languages";
 import { getSettings, useSettings } from "../lib/settings";
 
 const inputClass = "w-full rounded-lg border border-neutral-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-neutral-700";
@@ -42,7 +43,14 @@ export default function AIProviderSettings() {
         <button type="button" disabled={busy} className="text-xs font-medium text-indigo-600 disabled:opacity-50 dark:text-indigo-400" onClick={() => void run(async () => { await checkOllamaModel(getSettings()); return "Ollama connected · local model ready."; })}>Test Ollama</button>
       </div>
       <label className="block text-sm">Whisper server URL<input aria-label="Whisper server URL" className={`${inputClass} mt-1`} value={settings.whisperUrl ?? WHISPER_DEFAULT_URL} onChange={(e) => settings.update({ whisperUrl: e.target.value })} /></label>
-      <button type="button" disabled={busy} className="text-xs font-medium text-indigo-600 disabled:opacity-50 dark:text-indigo-400" onClick={() => void run(async () => { await transcribeLocal(getSettings().whisperUrl || WHISPER_DEFAULT_URL, new Int16Array(16000)); return "Whisper connected · audio endpoint ready. Test speech in a short meeting."; })}>Test Whisper</button>
+      <label className="block text-sm">Spoken language · Whisper
+        <select aria-label="Spoken language · Whisper" className={`${inputClass} mt-1 bg-white dark:bg-neutral-900`} value={settings.whisperLanguage || "auto"} onChange={(e) => settings.update({ whisperLanguage: e.target.value })}>
+          <option value="auto">Auto-detect</option>
+          {LANGUAGES.filter((language) => !["pt-PT", "zh-TW"].includes(language.code)).map((language) => <option key={language.code} value={whisperLanguageCode(language.code)}>{language.code.startsWith("pt") ? "Portuguese" : language.code.startsWith("zh") ? "Chinese" : language.name} — {language.nativeName}</option>)}
+        </select>
+      </label>
+      <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">Choose the main spoken language for both audio sources. Choose Hindi for Devanagari output with a multilingual model. Small models can still make recognition errors. This does not change your summary or translation language.</p>
+      <button type="button" disabled={busy} className="text-xs font-medium text-indigo-600 disabled:opacity-50 dark:text-indigo-400" onClick={() => void run(async () => { await transcribeLocal(getSettings().whisperUrl || WHISPER_DEFAULT_URL, new Int16Array(16000), getSettings().whisperLanguage || "auto"); return "Whisper connected · audio endpoint ready. Test speech in a short meeting."; })}>Test Whisper</button>
       <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">Only loopback URLs and downloaded Ollama models are accepted. Disable Ollama cloud features with OLLAMA_NO_CLOUD=1. Local failures stay local; MeetingAI never switches to Gemini automatically.</p>
     </>}
     {busy && <p role="status" className="text-xs text-neutral-500">Checking local server…</p>}

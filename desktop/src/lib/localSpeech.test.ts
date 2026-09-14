@@ -47,3 +47,11 @@ it("bounds the queue and makes skipped audio visible", async () => {
   expect(onError).toHaveBeenCalledTimes(1);
   expect(onError.mock.calls[0][0].message).toContain("Some audio was skipped");
 });
+
+it("keeps the chosen spoken language across queued chunks", async () => {
+  transcribe.mockResolvedValue("हिंदी");
+  const session = new LocalSpeechSession(undefined, {}, () => 1000, "hi");
+  session.sendAudio(voice());
+  await session.finishInput();
+  expect(transcribe).toHaveBeenCalledWith("http://localhost:8080", expect.any(Int16Array), "hi");
+});

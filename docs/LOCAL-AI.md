@@ -21,16 +21,16 @@ On macOS, install the server and download a **multilingual** model. `.en` models
 brew install whisper-cpp
 mkdir -p "$HOME/.cache/whisper-models"
 curl -fL --retry 3 \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin \
-  -o "$HOME/.cache/whisper-models/ggml-base.bin"
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin \
+  -o "$HOME/.cache/whisper-models/ggml-small.bin"
 whisper-server \
-  --model "$HOME/.cache/whisper-models/ggml-base.bin" \
+  --model "$HOME/.cache/whisper-models/ggml-small.bin" \
   --host 127.0.0.1 --port 8080 --language auto
 ```
 
-The `base` model is a small starting point, not an accuracy guarantee. For Hindi and mixed-language meetings, compare a multilingual `small` or `medium` model on your hardware. Larger models use more memory and take longer. Server installation on Windows follows [whisper.cpp's instructions](https://github.com/ggml-org/whisper.cpp/tree/master/examples/server).
+The multilingual `small` model is a starting point, not an accuracy guarantee. For Hindi names and mixed-language meetings, compare a larger `medium` model on your hardware. Larger models use more memory and take longer. Server installation on Windows follows [whisper.cpp's instructions](https://github.com/ggml-org/whisper.cpp/tree/master/examples/server).
 
-MeetingAI calls whisper.cpp's `POST /inference` multipart endpoint with a 16 kHz mono WAV, `language=auto`, and `translate=false`. An OpenAI-compatible `/v1/audio/transcriptions` endpoint is not interchangeable with this connector.
+MeetingAI calls whisper.cpp's `POST /inference` multipart endpoint with a 16 kHz mono WAV, the selected spoken-language code (`auto` by default), and `translate=false`. An OpenAI-compatible `/v1/audio/transcriptions` endpoint is not interchangeable with this connector.
 
 ## 3. Connect in MeetingAI
 
@@ -38,7 +38,8 @@ MeetingAI calls whisper.cpp's `POST /inference` multipart endpoint with a 16 kHz
 2. Keep Ollama URL `http://127.0.0.1:11434`, or enter your loopback port.
 3. Click **Refresh models**, select a downloaded text model, then **Test Ollama**. This checks model availability and capabilities; a summary exercises generation.
 4. Set Whisper URL to `http://127.0.0.1:8080` and click **Test Whisper**. This sends one second of silence to verify the audio endpoint, not recognition accuracy.
-5. Start a short meeting. Check both audio meters, speak a known sentence, then stop and review the transcript and summary.
+5. Choose **Spoken language · Whisper**. Select Hindi for Hindi calls; this is separate from the language used for summaries. A short Hindi script hint helps keep output in Devanagari.
+6. Start a short meeting. Check both audio meters, speak a known sentence, then stop and review the transcript and summary.
 
 Local capture buffers speech in memory and commits a chunk on a pause or a ten-second window. Finishing a meeting waits for queued recognition. Slow inference can delay text; a full queue produces an explicit skipped-audio warning. Saved-meeting text translation is on demand. Spoken live translation requires Gemini mode.
 
@@ -49,7 +50,7 @@ For offline inference, download models beforehand and keep Google Calendar disco
 - **No local models found:** use `ollama list` and download a model. Cloud tags and models without local weight metadata are excluded.
 - **Cannot reach server:** check that the relevant server is running. The native bridge uses loopback only, ignores HTTP proxies, and does not follow redirects. LAN IPs, HTTPS URLs, URL credentials, paths, and reverse-proxy URLs are rejected.
 - **Meter moves but recognition fails:** verify the Whisper port and model. The local connector expects whisper.cpp, not the Ollama chat endpoint.
-- **Poor Hindi recognition:** ensure the Whisper model filename does not end in `.en.bin`; use a larger multilingual model if your hardware can keep up.
+- **Poor Hindi recognition:** ensure the Whisper model filename does not end in `.en.bin`, select Hindi in the spoken-language control, and use a larger multilingual model if your hardware can keep up. Correct script does not guarantee correct words; the multilingual base model missed words in our synthetic Hindi check.
 - **Empty/truncated summary:** try a text model with better instruction following. Long meetings are summarized in sections, then combined; failures preserve the transcript.
 - **Repeated words or wrong speaker:** use headphones and check audio routing. Labels distinguish microphone from system audio, not each participant.
 
@@ -74,7 +75,7 @@ MEETINGAI_TEST_WAV=/tmp/meetingai-test.wav \
 cargo test --lib local_services_round_trip -- --ignored
 ```
 
-Optional `MEETINGAI_TEST_OLLAMA_URL` and `MEETINGAI_TEST_WHISPER_URL` select alternative loopback ports. No real meeting or key is included in the fixture. Tests verify connector behavior; they are not an accuracy benchmark across languages and hardware.
+Optional `MEETINGAI_TEST_OLLAMA_URL` and `MEETINGAI_TEST_WHISPER_URL` select alternative loopback ports. `MEETINGAI_TEST_LANGUAGE` pins the spoken language, and `MEETINGAI_TEST_WORDS` supplies comma-separated words that must be present in a custom synthetic fixture. No real meeting or key is included in the fixture. Tests verify connector behavior; they are not an accuracy benchmark across languages and hardware.
 
 ## Configurations checked on 14 September 2026
 
@@ -83,6 +84,8 @@ These are small synthetic integration checks on an Apple Silicon Mac, using Olla
 | Configuration | Observed result |
 |---|---|
 | whisper.cpp `ggml-base.en.bin` | Correctly recognized the English report/Friday/draft fixture through the native multipart bridge and through the app's chunked speech session. This English-only model does not validate Hindi recognition. |
+| whisper.cpp `ggml-base.bin`, Hindi | Returned Urdu script on the short Hindi fixture despite recognizing the language internally as Hindi. Pinning Hindi plus the script hint produced Devanagari, but still missed words. Use a larger model and review the transcript. |
+| whisper.cpp `ggml-small.bin`, Hindi | Preserved Friday and report in Devanagari with Hindi selected, but misrecognized the name Amit and some other words. The full meaning/name check failed; this is not a claim of production-quality Hindi recognition. |
 | Ollama `qwen3.5:4b-mlx` | Model discovery, structured summary, and English → Spanish translation passed. “Friday” remained “viernes.” |
 | Ollama `qwen3.5:4b-mlx`, English → Hindi | Failed a meaning check: “Friday” became “Wednesday.” Do not use this tested configuration for important Hindi translations without reviewing the output. |
 | Ollama `qwen3-vl:4b` | Basic native chat passed; the summary fixture exhausted the 2,048-token output limit despite `think: false`. The app surfaced an error instead of saving incomplete output. |

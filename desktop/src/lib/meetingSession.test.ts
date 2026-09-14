@@ -987,7 +987,7 @@ describe("audio recovery", () => {
 describe("local provider meeting lifecycle", () => {
   it("drains both audio sources into saved segments without opening Gemini", async () => {
     h.safeInvoke.mockImplementation(async (cmd: string) => cmd === "local_speech_transcribe" ? { text: "A local spoken sentence." } : undefined);
-    const { session } = await startLive({ aiProvider: "ollama", whisperUrl: "http://localhost:8080", ollamaModel: "local:4b", translationEnabled: true });
+    const { session } = await startLive({ aiProvider: "ollama", whisperUrl: "http://localhost:8080", ollamaModel: "local:4b", whisperLanguage: "hi", translationEnabled: true });
     mic().onChunk!(new Int16Array(16000).fill(1000));
     sys().onChunk!(new Int16Array(16000).fill(1000));
     await session.stop();
@@ -996,7 +996,7 @@ describe("local provider meeting lifecycle", () => {
     const saved = h.addSegment.mock.calls.map(([segment]) => segment as TranscriptSegment);
     expect(saved).toHaveLength(2);
     expect(saved.map(s => s.speaker).sort()).toEqual(["me", "them"]);
-    expect(saved.every(s => s.text === "A local spoken sentence." && s.final)).toBe(true);
+    expect(saved.every(s => s.text === "A local spoken sentence." && s.final && s.lang === "hi")).toBe(true);
     expect(h.endMeeting).toHaveBeenCalledOnce();
   });
 });

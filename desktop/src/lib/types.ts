@@ -41,6 +41,7 @@ export interface AppSettings {
   ollamaUrl?: string;
   ollamaModel?: string;
   whisperUrl?: string;
+  whisperLanguage?: string;
   userLanguage: string;
   otherLanguage: "auto" | string;
   voiceGenderMode: VoiceGenderMode;
