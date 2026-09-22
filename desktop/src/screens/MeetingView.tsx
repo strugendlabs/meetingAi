@@ -718,7 +718,7 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
           </span>
         )}
 
-        <StatusBar status={live ? status : "ended"} />
+        <StatusBar status={live ? status : segments.length ? "ended" : "empty"} />
         <span className="shrink-0 font-mono text-sm tabular-nums text-neutral-500 dark:text-neutral-400">
           {formatDuration(elapsedMs)}
         </span>
@@ -821,7 +821,9 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
 
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col" aria-label="Live transcript">
-          {live && <AudioStatus sources={audioSources} onRetry={async (speaker) => { await sessionRef.current?.retryAudio(speaker); }} />}
+          {live && <AudioStatus sources={audioSources}
+            onRetry={async (speaker) => { await sessionRef.current?.retryAudio(speaker); }}
+            onMicrophoneChange={async (deviceId) => { await sessionRef.current?.selectMicrophone(deviceId); }} />}
           <div className="min-h-0 flex-1">
           <TranscriptPane segments={segments} showTranslations={showTranslations} live={live} />
           </div>

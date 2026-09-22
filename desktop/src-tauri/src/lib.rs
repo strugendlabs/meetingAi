@@ -19,6 +19,7 @@ pub fn run() {
             audio_bridge::start_system_capture,
             audio_bridge::stop_system_capture,
             audio_bridge::check_system_audio_permission,
+            audio_bridge::open_audio_settings,
             ducking::duck_system_volume,
             ducking::restore_system_volume,
             keychain::keychain_set,

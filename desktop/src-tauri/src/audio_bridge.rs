@@ -21,7 +21,7 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as B64;
@@ -154,6 +154,80 @@ fn sidecar_exit_message(status: Option<ExitStatus>) -> String {
     }
 }
 
+#[derive(Default)]
+struct CaptureReport {
+    started: bool,
+    error: Option<String>,
+    error_emitted: bool,
+}
+
+/// Drain stderr before choosing an exit message: stdout EOF can arrive before
+/// the reader has parsed the actual permission/device failure on stderr.
+fn read_capture_status(
+    reader: impl BufRead,
+    startup: &mpsc::SyncSender<Result<(), String>>,
+    mut on_error: impl FnMut(&str) -> bool,
+) -> CaptureReport {
+    let mut report = CaptureReport::default();
+    for line in reader.lines().map_while(Result::ok) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        match value.get("event").and_then(|e| e.as_str()) {
+            Some("started") if !report.started && report.error.is_none() => {
+                report.started = true;
+                let _ = startup.try_send(Ok(()));
+            }
+            Some("error") => {
+                let message = value
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Call audio capture failed")
+                    .to_string();
+                if report.started {
+                    report.error_emitted = on_error(&message);
+                } else {
+                    let _ = startup.try_send(Err(message.clone()));
+                }
+                report.error = Some(message);
+            }
+            _ => {}
+        }
+    }
+    report
+}
+
+fn capture_failure(
+    report: &CaptureReport,
+    result: io::Result<()>,
+    status: Option<ExitStatus>,
+) -> String {
+    if let Some(message) = &report.error {
+        return message.clone();
+    }
+    match result {
+        Err(e) => format!("Call audio stream failed: {e}"),
+        Ok(()) => sidecar_exit_message(status),
+    }
+}
+
+fn emit_capture_error(app: &AppHandle, generation: u64, message: &str) -> bool {
+    // Serialize with stop/retry so an old helper cannot poison a new capture.
+    let Ok(guard) = SIDECAR.lock() else {
+        return false;
+    };
+    if !guard.as_ref().is_some_and(|s| s.generation == generation) {
+        return false;
+    }
+    let _ = app.emit(
+        "system-audio-error",
+        ErrorPayload {
+            message: message.to_string(),
+        },
+    );
+    true
+}
+
 /// Resolves the sidecar binary: next to the app executable when bundled
 /// (Tauri strips the target-triple suffix), falling back to the dev-time
 /// `src-tauri/binaries/` location.
@@ -216,6 +290,23 @@ fn sidecar_command(path: &PathBuf) -> Command {
 /// `system-audio-chunk` events; sidecar errors surface as `system-audio-error`.
 #[tauri::command]
 pub async fn start_system_capture(app: AppHandle) -> Result<(), String> {
+    let (generation, ready) = spawn_system_capture(app)?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        ready.recv_timeout(Duration::from_secs(15))
+            .unwrap_or_else(|_| Err("Call audio did not start. Check recording permission and your output device, then retry audio.".into()))
+    }).await.map_err(|e| e.to_string())?;
+    if result.is_err() {
+        if let Some(mut child) = take_child_if_current(&SIDECAR, generation) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    result
+}
+
+fn spawn_system_capture(
+    app: AppHandle,
+) -> Result<(u64, mpsc::Receiver<Result<(), String>>), String> {
     let mut guard = SIDECAR.lock().map_err(|e| e.to_string())?;
     if let Some(state) = guard.as_mut() {
         match state.child.try_wait() {
@@ -244,6 +335,17 @@ pub async fn start_system_capture(app: AppHandle) -> Result<(), String> {
     *guard = Some(SidecarState { generation, child });
     drop(guard);
 
+    let (startup, ready) = mpsc::sync_channel(1);
+    let (report_tx, report_rx) = mpsc::sync_channel(1);
+    let app_status = app.clone();
+    let startup_status = startup.clone();
+    std::thread::spawn(move || {
+        let report = read_capture_status(BufReader::new(stderr), &startup_status, |message| {
+            emit_capture_error(&app_status, generation, message)
+        });
+        let _ = report_tx.send(report);
+    });
+
     let app_frames = app.clone();
     std::thread::spawn(move || {
         let result = read_frames(stdout, |payload| {
@@ -261,47 +363,67 @@ pub async fn start_system_capture(app: AppHandle) -> Result<(), String> {
         // child, and surface the failure. If it was already claimed, a
         // stop_system_capture or respawn owns the outcome — stay silent.
         let reaped = take_child_if_current(&SIDECAR, generation).map(reap_child);
-        match result {
-            Err(e) => {
-                if reaped.is_some() {
-                    let _ = app_frames.emit(
-                        "system-audio-error",
-                        ErrorPayload {
-                            message: format!("sidecar stream error: {e}"),
-                        },
-                    );
+        // The process has been reaped, so stderr should close promptly. Bound
+        // the wait in case a broken helper left an inherited pipe open.
+        let report = report_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap_or_default();
+        if let Some(status) = reaped {
+            let message = capture_failure(&report, result, status);
+            let _ = startup.try_send(Err(message.clone()));
+            // A startup failure is returned by the command. After startup,
+            // preserve any specific error already delivered; never overwrite
+            // it with the process exit code from the other pipe.
+            if report.started && !report.error_emitted {
+                let guard = SIDECAR.lock().unwrap();
+                if guard.is_none() && NEXT_GENERATION.load(Ordering::Relaxed) == generation + 1 {
+                    let _ = app_frames.emit("system-audio-error", ErrorPayload { message });
                 }
             }
-            Ok(()) => {
-                if let Some(status) = reaped {
-                    let _ = app_frames.emit(
-                        "system-audio-error",
-                        ErrorPayload {
-                            message: sidecar_exit_message(status),
-                        },
-                    );
-                }
-            }
+        } else {
+            let _ = startup.try_send(Err("Call audio capture was stopped".into()));
         }
     });
 
-    std::thread::spawn(move || {
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
-                continue;
-            };
-            if value.get("event").and_then(|e| e.as_str()) == Some("error") {
-                let message = value
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("unknown sidecar error")
-                    .to_string();
-                let _ = app.emit("system-audio-error", ErrorPayload { message });
-            }
-        }
-    });
+    Ok((generation, ready))
+}
 
-    Ok(())
+/// Only fixed OS destinations are accepted; no arbitrary shell command or URL.
+#[tauri::command]
+pub async fn open_audio_settings(source: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let (program, destination) = (
+        "open",
+        match source.as_str() {
+            "system" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            }
+            "microphone" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            }
+            "input" => "x-apple.systempreferences:com.apple.preference.sound?input",
+            _ => return Err("Unknown audio settings page".into()),
+        },
+    );
+    #[cfg(windows)]
+    let (program, destination) = (
+        "explorer.exe",
+        match source.as_str() {
+            "microphone" => "ms-settings:privacy-microphone",
+            "system" | "input" => "ms-settings:sound",
+            _ => return Err("Unknown audio settings page".into()),
+        },
+    );
+    #[cfg(not(any(target_os = "macos", windows)))]
+    return Err("Open your system audio settings to change recording access".into());
+    #[cfg(any(target_os = "macos", windows))]
+    {
+        Command::new(program)
+            .arg(destination)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 /// Kills the sidecar if it is running. Idempotent.
@@ -350,6 +472,67 @@ pub async fn check_system_audio_permission(_app: AppHandle) -> Result<bool, Stri
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[cfg(unix)]
+    #[test]
+    fn permission_error_survives_stdout_eof_before_stderr() {
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg("exec 1>&-; sleep 0.03; printf '%s\\n' '{\"event\":\"error\",\"message\":\"Screen recording permission denied\"}' >&2; exit 2")
+            .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let (startup, ready) = mpsc::sync_channel(1);
+        let reader = std::thread::spawn(move || {
+            read_capture_status(BufReader::new(stderr), &startup, |_| {
+                panic!(
+                    "Startup errors must be returned to the caller, not emitted as runtime errors"
+                )
+            })
+        });
+        let result = read_frames(stdout, |_| panic!("No audio was captured"));
+        let status = reap_child(child);
+        let report = reader.join().unwrap();
+        assert!(!report.started);
+        assert_eq!(
+            ready.recv().unwrap(),
+            Err("Screen recording permission denied".into())
+        );
+        assert_eq!(
+            capture_failure(&report, result, status),
+            "Screen recording permission denied"
+        );
+    }
+
+    #[test]
+    fn runtime_error_keeps_the_specific_reason_and_marks_it_delivered() {
+        let (startup, ready) = mpsc::sync_channel(1);
+        let mut errors = Vec::new();
+        let report = read_capture_status(Cursor::new(
+            "{\"event\":\"started\"}\n{\"event\":\"error\",\"message\":\"Output device disconnected\"}\n"
+        ), &startup, |message| { errors.push(message.to_string()); true });
+        assert_eq!(ready.recv().unwrap(), Ok(()));
+        assert_eq!(errors, ["Output device disconnected"]);
+        assert!(report.error_emitted);
+        assert_eq!(
+            capture_failure(&report, Ok(()), None),
+            "Output device disconnected"
+        );
+    }
+
+    #[test]
+    fn noise_or_warning_is_not_successful_startup() {
+        let (startup, ready) = mpsc::sync_channel(1);
+        let report = read_capture_status(
+            Cursor::new(
+                "native diagnostic\n{\"event\":\"warning\",\"message\":\"still starting\"}\n",
+            ),
+            &startup,
+            |_| true,
+        );
+        assert!(!report.started);
+        assert!(matches!(ready.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    }
 
     fn frame(payload: &[u8]) -> Vec<u8> {
         let mut out = (payload.len() as u32).to_le_bytes().to_vec();

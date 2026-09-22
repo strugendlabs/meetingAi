@@ -16,4 +16,10 @@ describe("audio diagnostics", () => {
   it("reports the capture permission error before recognition state", () => {
     expect(describeAudio({ ...emptyAudioSource("me"), error: "Microphone permission denied" }, 0)).toBe("Microphone permission denied");
   });
+  it("suggests another microphone for a silent input without blaming a quiet remote participant", () => {
+    const source = { ...emptyAudioSource("me"), capture: "ready" as const, connected: true, captureReadyAt: 0, lastAudioAt: 11000 };
+    expect(describeAudio(source, 11000)).toContain("choose another input");
+    expect(describeAudio({ ...source, speaker: "them" }, 11000)).toContain("waiting for speech");
+    expect(describeAudio({ ...source, lastSoundAt: 10000 }, 11000)).toContain("Sound received");
+  });
 });

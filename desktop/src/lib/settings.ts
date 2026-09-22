@@ -12,6 +12,7 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 import type { AppSettings } from "./types";
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  microphoneDeviceId: "",
   aiProvider: "gemini",
   ollamaUrl: "http://127.0.0.1:11434",
   ollamaModel: "",

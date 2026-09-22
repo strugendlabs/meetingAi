@@ -1,5 +1,30 @@
-import { describe, it, expect } from "vitest";
-import { batchSamples, CHUNK_SAMPLES } from "./mic";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { batchSamples, CHUNK_SAMPLES, MicCapture } from "./mic";
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("microphone selection", () => {
+  it("requests the chosen input explicitly and reports a missing device without silently switching", async () => {
+    const getUserMedia = vi.fn().mockRejectedValue(new DOMException("Device missing", "OverconstrainedError"));
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    const mic = new MicCapture();
+    await expect(mic.start(() => {}, undefined, "built-in")).rejects.toThrow("selected microphone is unavailable");
+    expect(getUserMedia).toHaveBeenCalledExactlyOnceWith({ audio: expect.objectContaining({ deviceId: { exact: "built-in" } }) });
+  });
+
+  it("releases a chosen microphone if Stop happens while permission is pending", async () => {
+    let resolve!: (stream: MediaStream) => void;
+    const getUserMedia = vi.fn(() => new Promise<MediaStream>((r) => { resolve = r; }));
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    const mic = new MicCapture();
+    const starting = mic.start(() => {}, undefined, "headset");
+    mic.stop();
+    const stop = vi.fn();
+    resolve({ getTracks: () => [{ stop }] } as unknown as MediaStream);
+    await starting;
+    expect(stop).toHaveBeenCalledOnce();
+  });
+});
 
 /** Int16Array [start, start+1, ..., start+len-1] for order-sensitive checks. */
 function seq(start: number, len: number): Int16Array {

@@ -939,6 +939,37 @@ describe("transcription independent of interpretation", () => {
 });
 
 describe("audio recovery", () => {
+  it("keeps microphone transcription working through denied call-audio startup and retry", async () => {
+    const { session, cb } = makeSession({ translationEnabled: false });
+    const denied = "Screen recording permission denied. Enable MeetingAI in System Settings.";
+    sys().start.mockRejectedValueOnce(new Error(denied));
+    await session.start();
+    expect(cb.onStatus).toHaveBeenLastCalledWith("degraded", denied);
+    mic().onChunk!(new Int16Array([1000, -1000]));
+    expect(live(0).audio).toHaveLength(1);
+    live(0).opts.onTranscript!("The microphone still works.", { kind: "final" });
+    await session.retryAudio("them");
+    expect(cb.onStatus).toHaveBeenLastCalledWith("live");
+    expect(live(0).closed).toBe(false);
+    sys().onChunk!(new Int16Array([500]));
+    expect(live(2).audio).toHaveLength(1);
+    await session.stop();
+    expect(h.addSegment).toHaveBeenCalledWith(expect.objectContaining({ text: "The microphone still works.", speaker: "me" }));
+  });
+
+  it("switches microphones without restarting or closing call audio", async () => {
+    const { session } = await startLive({ translationEnabled: false, microphoneDeviceId: "headset" });
+    expect(mic().start).toHaveBeenLastCalledWith(expect.any(Function), expect.any(Function), "headset");
+    await session.selectMicrophone("built-in");
+    expect(mic().start).toHaveBeenLastCalledWith(expect.any(Function), expect.any(Function), "built-in");
+    expect(sys().start).toHaveBeenCalledTimes(1);
+    expect(sys().stop).not.toHaveBeenCalled();
+    expect(live(1).closed).toBe(false);
+    mic().onChunk!(new Int16Array([200]));
+    expect(live(2).audio).toHaveLength(1);
+    await session.stop();
+  });
+
   it("keeps call recognition working when the microphone permission is denied", async () => {
     const { session, cb } = makeSession({ translationEnabled: false });
     mic().start.mockRejectedValueOnce(new Error("Microphone permission denied"));

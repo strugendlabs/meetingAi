@@ -16,7 +16,7 @@ export function sanitizeDetail(detail: string): string {
     .trim();
 }
 
-export type StatusBarStatus = MeetingStatus | "ended";
+export type StatusBarStatus = MeetingStatus | "ended" | "empty";
 
 const STYLES: Record<
   StatusBarStatus,
@@ -56,6 +56,12 @@ const STYLES: Record<
     label: "Completed",
     chip: "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300",
     dot: "bg-neutral-400 dark:bg-neutral-500",
+    pulse: false,
+  },
+  empty: {
+    label: "No transcript",
+    chip: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+    dot: "bg-amber-500",
     pulse: false,
   },
 };

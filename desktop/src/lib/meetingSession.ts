@@ -197,6 +197,7 @@ export class MeetingSession {
   private everStarted = false;
   private readonly mic = new MicCapture();
   private readonly system = new SystemAudioCapture();
+  private microphoneDeviceId: string;
   private liveMe: SpeechSession | null = null;
   private liveThem: SpeechSession | null = null;
   private liveTranslate: SpeechSession | null = null;
@@ -240,6 +241,7 @@ export class MeetingSession {
     this.settings = settings;
     this.meeting = meeting;
     this.cb = cb;
+    this.microphoneDeviceId = settings.microphoneDeviceId ?? "";
     this.translateVoice = pickVoice(settings.voiceGenderMode);
   }
 
@@ -360,17 +362,27 @@ export class MeetingSession {
       this.emitAudioHealth();
     };
     try {
-      if (speaker === "me") await this.mic.start((pcm) => this.receiveAudio(speaker, pcm), error);
+      if (speaker === "me") {
+        await this.mic.start((pcm) => this.receiveAudio(speaker, pcm), error, this.microphoneDeviceId);
+        this.audioSources.me.inputLabel = this.mic.inputLabel;
+      }
       else await this.system.start((pcm) => this.receiveAudio(speaker, pcm), error);
       if (this.state === "stopped") return;
       // An error event can arrive while the native start call is resolving.
       if (this.audioSources[speaker].capture !== "error") {
         this.audioSources[speaker].capture = "ready";
+        this.audioSources[speaker].captureReadyAt = Date.now();
         this.setHealth(label, "live");
       }
     } catch (e) {
       error(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  /** Recover one source without interrupting the other participant. */
+  async selectMicrophone(deviceId: string): Promise<void> {
+    this.microphoneDeviceId = deviceId;
+    await this.retryAudio("me");
   }
 
   /** Recover one source without interrupting the other participant. */

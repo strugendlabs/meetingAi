@@ -37,6 +37,8 @@ export interface Meeting {
 export type VoiceGenderMode = "auto" | "male" | "female";
 
 export interface AppSettings {
+  /** Empty/absent follows the system default microphone. */
+  microphoneDeviceId?: string;
   aiProvider?: "gemini" | "ollama";
   ollamaUrl?: string;
   ollamaModel?: string;

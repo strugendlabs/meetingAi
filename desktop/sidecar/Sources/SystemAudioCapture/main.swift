@@ -22,6 +22,18 @@ func emitError(_ message: String) {
     emitStatus(["event": "error", "message": message])
 }
 
+/// Only a genuine privacy denial should send someone to System Settings.
+/// Other ScreenCaptureKit failures (e.g. a disconnected display) are retryable.
+func reportCaptureError(_ error: Error, context: String) -> Int32 {
+    let native = error as NSError
+    if native.domain == SCStreamErrorDomain && native.code == SCStreamError.Code.userDeclined.rawValue {
+        emitError("Screen recording permission denied. Enable MeetingAI in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen MeetingAI.")
+        return 2
+    }
+    emitError("\(context): \(native.localizedDescription) [\(native.domain) \(native.code)]")
+    return 1
+}
+
 // MARK: - stdout framing: [u32 LE byte-length][payload]
 
 let stdoutHandle = FileHandle.standardOutput
@@ -111,8 +123,7 @@ final class AudioCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        emitError("stream stopped: \(error.localizedDescription)")
-        exit(1)
+        exit(reportCaptureError(error, context: "Call audio stopped"))
     }
 }
 
@@ -176,8 +187,7 @@ func startCapture() {
             try await stream.startCapture()
             emitStatus(["event": "started"])
         } catch {
-            emitError("failed to start capture: \(error.localizedDescription)")
-            exit(2)
+            exit(reportCaptureError(error, context: "Could not start call audio"))
         }
     }
     RunLoop.main.run()
@@ -190,8 +200,7 @@ func checkPermission() {
                 false, onScreenWindowsOnly: false)
             exit(0)
         } catch {
-            emitError("permission denied: \(error.localizedDescription)")
-            exit(2)
+            exit(reportCaptureError(error, context: "Could not check call audio"))
         }
     }
     RunLoop.main.run()

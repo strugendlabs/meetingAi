@@ -97,6 +97,9 @@ function isPermissionDenial(err: unknown): boolean {
 }
 
 export class MicCapture {
+  get inputLabel(): string | undefined {
+    return this.stream?.getAudioTracks()[0]?.label || undefined;
+  }
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
@@ -108,7 +111,7 @@ export class MicCapture {
   private resampler: Downsampler | null = null;
 
   /** Start capturing; `onChunk` receives ~250 ms Int16 16 kHz chunks. */
-  async start(onChunk: (pcm16k: Int16Array) => void, onError?: (message: string) => void): Promise<void> {
+  async start(onChunk: (pcm16k: Int16Array) => void, onError?: (message: string) => void, deviceId?: string): Promise<void> {
     if (this.running) throw new Error("MicCapture is already started");
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("Microphone capture is not supported in this environment");
@@ -119,6 +122,7 @@ export class MicCapture {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
@@ -129,6 +133,9 @@ export class MicCapture {
       this.running = false;
       this.onChunk = null;
       if (isPermissionDenial(err)) throw new MicPermissionError();
+      if (err instanceof DOMException && (err.name === "OverconstrainedError" || err.name === "NotFoundError")) {
+        throw new Error("The selected microphone is unavailable. Choose another input below, then retry audio.");
+      }
       throw err instanceof Error ? err : new Error(String(err));
     }
     // stop() may have run while getUserMedia (and its permission prompt) was
@@ -166,6 +173,9 @@ export class MicCapture {
         channelCount: 1,
         channelCountMode: "explicit",
       });
+      this.node.onprocessorerror = () => {
+        if (this.running) onError?.("Microphone audio processing stopped. Retry audio to reconnect your input.");
+      };
       this.node.port.onmessage = (e: MessageEvent) => {
         this.handleFrame(e.data as Float32Array);
       };
