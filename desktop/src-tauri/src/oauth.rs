@@ -452,7 +452,7 @@ pub async fn google_oauth_refresh(
         email: existing.map(|e| e.email).unwrap_or_default(),
     };
     let json = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
-    crate::keychain::set_secret(TOKENS_KEYCHAIN_KEY, &json)?;
+    crate::keychain::set_secret_quiet(TOKENS_KEYCHAIN_KEY, &json)?;
     Ok(json)
 }
 

@@ -1,93 +1,215 @@
-//! Native credential-vault access via the `keyring` crate (Task 7).
-//!
-//! Service: `com.meetingai.desktop`. Secrets (Gemini API key, Google OAuth
-//! tokens) live here — never in SQLite, localStorage or logs.
-//!
-//! A process-lifetime in-memory cache fronts every read: the UI reads the API
-//! key on each meeting start and the Settings/Calendar screens read on mount,
-//! so without the cache macOS can repeatedly show the Keychain access panel.
-//! Each secret hits the platform credential vault at most once per app launch.
-//! Writes and deletes keep the cache coherent so a key the user just changed
-//! is never served stale.
-#![allow(dead_code)]
-
+//! Credentials stay in the OS vault. Background reads never open a macOS
+//! permission dialog; only an explicit Unlock/Save/Delete action may do that.
+//! Serialize vault operations and cache both values and failures for this launch.
 use keyring::Entry;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 const SERVICE: &str = "com.meetingai.desktop";
+const LOCKED: &str = "Saved credential needs access. Unlock it in Settings; if macOS asks, choose Always Allow to remember this app.";
+type SecretResult = Result<Option<String>, String>;
 
-/// key -> Some(value) present, None known-absent. Absence from the map means
-/// "not yet read" (distinct from a cached None).
-static CACHE: Mutex<Option<HashMap<String, Option<String>>>> = Mutex::new(None);
+#[derive(Default)]
+struct SecretCache(Mutex<HashMap<String, SecretResult>>);
 
-fn cache_get(key: &str) -> Option<Option<String>> {
-    let guard = CACHE.lock().ok()?;
-    guard.as_ref()?.get(key).cloned()
-}
+impl SecretCache {
+    fn read(
+        &self,
+        key: &str,
+        interactive: bool,
+        read: impl FnOnce() -> SecretResult,
+    ) -> SecretResult {
+        let mut cache = self.0.lock().map_err(|_| "Credential cache unavailable")?;
+        if let Some(value) = cache.get(key) {
+            if value.is_ok() || !interactive {
+                return value.clone();
+            }
+        }
+        let value = read();
+        cache.insert(key.to_string(), value.clone());
+        value
+    }
 
-fn cache_put(key: &str, value: Option<String>) {
-    if let Ok(mut guard) = CACHE.lock() {
-        guard
-            .get_or_insert_with(HashMap::new)
-            .insert(key.to_string(), value);
+    fn write(
+        &self,
+        key: &str,
+        value: Option<String>,
+        write: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut cache = self.0.lock().map_err(|_| "Credential cache unavailable")?;
+        write()?;
+        cache.insert(key.to_string(), Ok(value));
+        Ok(())
     }
 }
+
+static CACHE: std::sync::LazyLock<SecretCache> = std::sync::LazyLock::new(SecretCache::default);
 
 fn entry(key: &str) -> Result<Entry, String> {
-    Entry::new(SERVICE, key).map_err(|e| format!("keychain entry error: {e}"))
+    if !matches!(key, "gemini_api_key" | "google_tokens") {
+        return Err("Unknown MeetingAI credential".into());
+    }
+    Entry::new(SERVICE, key).map_err(|e| format!("Credential vault unavailable: {e}"))
 }
 
-/// Internal helper (also used by `oauth.rs` to persist Google tokens).
+/// Process-wide macOS interaction state must only be changed under CACHE's
+/// lock. This does not bypass vault access: a denied read returns an error.
+fn vault_read(key: &str, interactive: bool) -> SecretResult {
+    #[cfg(target_os = "macos")]
+    let _no_dialog = if interactive {
+        None
+    } else {
+        Some(
+            security_framework::os::macos::keychain::SecKeychain::disable_user_interaction()
+                .map_err(|_| LOCKED.to_string())?,
+        )
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = interactive;
+    match entry(key)?.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err(LOCKED.into()),
+    }
+}
+
+pub(crate) fn get_secret(key: &str) -> SecretResult {
+    CACHE.read(key, false, || vault_read(key, false))
+}
+
+fn write_secret(key: &str, value: &str, interactive: bool) -> Result<(), String> {
+    CACHE.write(key, Some(value.to_string()), || {
+        #[cfg(target_os = "macos")]
+        let _no_dialog = if interactive {
+            None
+        } else {
+            Some(
+                security_framework::os::macos::keychain::SecKeychain::disable_user_interaction()
+                    .map_err(|_| LOCKED.to_string())?,
+            )
+        };
+        #[cfg(not(target_os = "macos"))]
+        let _ = interactive;
+        entry(key)?
+            .set_password(value)
+            .map_err(|_| "Could not save credential in the OS vault".into())
+    })
+}
+
 pub(crate) fn set_secret(key: &str, value: &str) -> Result<(), String> {
-    entry(key)?
-        .set_password(value)
-        .map_err(|e| format!("keychain set error: {e}"))?;
-    cache_put(key, Some(value.to_string()));
-    Ok(())
+    write_secret(key, value, true)
 }
 
-/// Internal helper. `Ok(None)` when the key does not exist. Served from the
-/// in-memory cache after the first real read (see module docs).
-pub(crate) fn get_secret(key: &str) -> Result<Option<String>, String> {
-    if let Some(cached) = cache_get(key) {
-        return Ok(cached);
-    }
-    let value = match entry(key)?.get_password() {
-        Ok(v) => Some(v),
-        Err(keyring::Error::NoEntry) => None,
-        Err(e) => return Err(format!("keychain get error: {e}")),
-    };
-    cache_put(key, value.clone());
-    Ok(value)
+pub(crate) fn set_secret_quiet(key: &str, value: &str) -> Result<(), String> {
+    write_secret(key, value, false)
 }
 
-/// Internal helper. Deleting a missing key is not an error.
 pub(crate) fn delete_secret(key: &str) -> Result<(), String> {
-    let result = match entry(key)?.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("keychain delete error: {e}")),
+    CACHE.write(key, None, || match entry(key)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("Could not remove credential from the OS vault".into()),
+    })
+}
+
+#[tauri::command]
+pub async fn keychain_get(key: String) -> SecretResult {
+    tauri::async_runtime::spawn_blocking(move || get_secret(&key))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Explicit user action. Return presence only; the secret stays in the cache.
+#[tauri::command]
+pub async fn keychain_unlock(key: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        CACHE
+            .read(&key, true, || vault_read(&key, true))
+            .map(|v| v.is_some())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn keychain_set(key: String, value: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || set_secret(&key, &value))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn keychain_delete(key: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || delete_secret(&key))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
     };
-    // Reflect the deletion in the cache regardless of the keyring outcome for
-    // the missing-key case; on a real error leave the cache untouched.
-    if result.is_ok() {
-        cache_put(key, None);
+
+    #[test]
+    fn concurrent_reads_touch_vault_once() {
+        let cache = Arc::new(SecretCache::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let cache = cache.clone();
+                let calls = calls.clone();
+                std::thread::spawn(move || {
+                    cache
+                        .read("key", false, || {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                            Ok(Some("synthetic-secret".into()))
+                        })
+                        .unwrap()
+                })
+            })
+            .collect();
+        for thread in threads {
+            assert_eq!(thread.join().unwrap().as_deref(), Some("synthetic-secret"));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
-    result
-}
 
-#[tauri::command]
-pub fn keychain_set(key: String, value: String) -> Result<(), String> {
-    set_secret(&key, &value)
-}
+    #[test]
+    fn denied_reads_are_cached_until_explicit_unlock() {
+        let cache = SecretCache::default();
+        assert!(cache.read("key", false, || Err(LOCKED.into())).is_err());
+        assert!(cache
+            .read("key", false, || panic!(
+                "must not retry a denied background read"
+            ))
+            .is_err());
+        assert_eq!(
+            cache
+                .read("key", true, || Ok(Some("unlocked".into())))
+                .unwrap()
+                .as_deref(),
+            Some("unlocked")
+        );
+        assert!(cache
+            .read("key", false, || panic!("reuse unlocked credential"))
+            .is_ok());
+    }
 
-#[tauri::command]
-pub fn keychain_get(key: String) -> Result<Option<String>, String> {
-    get_secret(&key)
-}
-
-#[tauri::command]
-pub fn keychain_delete(key: String) -> Result<(), String> {
-    delete_secret(&key)
+    #[test]
+    fn writes_and_deletes_replace_cached_credentials_only_on_success() {
+        let cache = SecretCache::default();
+        cache.write("key", Some("first".into()), || Ok(())).unwrap();
+        assert!(cache
+            .write("key", Some("wrong".into()), || Err("denied".into()))
+            .is_err());
+        assert_eq!(
+            cache.read("key", false, || panic!()).unwrap().as_deref(),
+            Some("first")
+        );
+        cache.write("key", None, || Ok(())).unwrap();
+        assert_eq!(cache.read("key", false, || panic!()).unwrap(), None);
+    }
 }

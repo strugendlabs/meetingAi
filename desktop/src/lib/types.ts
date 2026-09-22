@@ -39,6 +39,8 @@ export type VoiceGenderMode = "auto" | "male" | "female";
 export interface AppSettings {
   /** Empty/absent follows the system default microphone. */
   microphoneDeviceId?: string;
+  /** Display metadata only; OAuth tokens remain in the credential vault. */
+  googleAccountEmail?: string;
   aiProvider?: "gemini" | "ollama";
   ollamaUrl?: string;
   ollamaModel?: string;

@@ -6,6 +6,7 @@
 //   flags:  --check → exit 0 if screen/audio-capture permission is granted, 2 if TCC denied
 
 import AVFoundation
+import AppKit
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -240,6 +241,16 @@ for sig in [SIGINT, SIGTERM] {
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
+
+// This audio-only helper never owns a Dock icon or a window.
+NSApplication.shared.setActivationPolicy(.prohibited)
+let parentPID = getppid()
+let parentWatch = DispatchSource.makeTimerSource(queue: .main)
+parentWatch.schedule(deadline: .now() + 1, repeating: 1)
+parentWatch.setEventHandler {
+    if getppid() != parentPID { exit(0) }
+}
+parentWatch.resume()
 
 if arguments.isEmpty {
     startCapture()

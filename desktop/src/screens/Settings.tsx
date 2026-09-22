@@ -146,23 +146,19 @@ export default function Settings() {
   }, [settings.hasUserGeminiKey]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // google_tokens is written by THIS (stable-signed) app, so reading it
-        // back does not prompt; absent tokens simply leave us disconnected.
-        const raw = await safeInvoke<string | null>("keychain_get", { key: "google_tokens" });
-        if (cancelled || !raw) return;
-        const parsed = JSON.parse(raw) as { email?: string };
-        setGoogleEmail(parsed.email || "your Google account");
-      } catch {
-        // No stored tokens (or unreadable) — stay disconnected.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setGoogleEmail(settings.googleAccountEmail || null);
+  }, [settings.googleAccountEmail]);
+
+  const unlockKey = async () => {
+    setKeyBusy(true); setKeyError(null);
+    try {
+      const found = await safeInvoke<boolean>("keychain_unlock", { key: "gemini_api_key" });
+      if (!found) throw new Error("No saved key found. Paste your Gemini API key below.");
+      settings.update({ hasUserGeminiKey: true });
+      setKeyState("set");
+    } catch (e) { setKeyError(e instanceof Error ? e.message : String(e)); }
+    finally { setKeyBusy(false); }
+  };
 
   const saveKey = useCallback(async () => {
     const key = newKey.trim();
@@ -219,6 +215,7 @@ export default function Settings() {
         }
       }
       setGoogleEmail(email);
+      settings.update({ googleAccountEmail: email });
     } catch (e) {
       setGoogleError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -231,6 +228,7 @@ export default function Settings() {
     try {
       await safeInvoke("keychain_delete", { key: "google_tokens" });
       setGoogleEmail(null);
+      settings.update({ googleAccountEmail: "" });
     } catch (e) {
       setGoogleError(e instanceof Error ? e.message : String(e));
     }
@@ -317,6 +315,10 @@ export default function Settings() {
               </p>
             ) : (
               <>
+                <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
+                  <p className="text-xs leading-relaxed text-neutral-500">MeetingAI never opens a credential prompt in the background. Unlock a saved key here if macOS requires access. If macOS asks, choose Always Allow to remember this app.</p>
+                  <button type="button" disabled={keyBusy} onClick={() => void unlockKey()} className="shrink-0 text-xs font-semibold text-indigo-600 disabled:opacity-50 dark:text-indigo-400">Unlock saved key</button>
+                </div>
                 {keyState === "unset" && ADMIN_CONFIG.geminiApiKey && (
                   <p className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400">
                     A key is pre-configured by your administrator. Adding your own below overrides

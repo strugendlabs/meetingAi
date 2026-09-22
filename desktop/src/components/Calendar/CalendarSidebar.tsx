@@ -160,9 +160,11 @@ export default function CalendarSidebar({ onRecord, onOpenSettings }: CalendarSi
   });
   const [state, setState] = useState<SidebarState>({ kind: "loading" });
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (unlock = false) => {
     setState({ kind: "loading" });
+    if (!clientId) { setState({ kind: "unconfigured" }); return; }
     try {
+      if (unlock) await safeInvoke("keychain_unlock", { key: "google_tokens" });
       const raw = await safeInvoke<string | null>("keychain_get", {
         key: "google_tokens",
       });
@@ -171,6 +173,7 @@ export default function CalendarSidebar({ onRecord, onOpenSettings }: CalendarSi
         return;
       }
       let tokens = JSON.parse(raw) as StoredGoogleTokens;
+      useSettings.getState().update({ googleAccountEmail: tokens.email || "your Google account" });
       const refresh = async (): Promise<string> => {
         const json = await safeInvoke<string>("google_oauth_refresh", {
           clientId,
@@ -276,7 +279,7 @@ export default function CalendarSidebar({ onRecord, onOpenSettings }: CalendarSi
           <Placeholder
             title="Couldn't load calendar"
             body={describeGoogleAuthError(state.message)}
-            action={{ label: "Try again", onClick: () => void load() }}
+            action={{ label: state.message.includes("Saved credential needs access") ? "Unlock calendar" : "Try again", onClick: () => void load(state.message.includes("Saved credential needs access")) }}
           />
         )}
 

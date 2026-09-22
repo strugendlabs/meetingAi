@@ -6,7 +6,7 @@ An open-source desktop meeting notetaker with local storage and a choice of AI p
 
 [MIT license](LICENSE) · [Local AI setup](docs/LOCAL-AI.md) · [Privacy](PRIVACY.md) · [Build & release](release/MAC-DISTRIBUTION.md)
 
-> Early preview. Build from source today. A signed, notarized Mac download is not available yet. macOS Apple Silicon is the tested platform; Windows capture and packaging code is included but has not been validated on a Windows machine. Linux is not supported.
+> Early preview. Build from source today. A signed, notarized Mac download is not available yet. macOS Apple Silicon is the primary tested platform. The Windows installer workflow builds and tests a Windows 11 x64 preview; audio quality still needs validation on Windows hardware. Linux is not supported.
 
 ## Choose where inference runs
 
@@ -49,21 +49,22 @@ Create a local app bundle with `npm run tauri build`. Generated binaries are int
 
 In onboarding or **Settings → Your AI, your choice**, choose:
 
-- **Gemini · BYOK**: enter your own key from [Google AI Studio](https://aistudio.google.com/apikey). It goes into the OS credential vault. Builds do not embed developer `.env` credentials.
+- **Gemini · BYOK**: enter your own key from [Google AI Studio](https://aistudio.google.com/apikey). It goes into the OS credential vault. Background reads never open Keychain dialogs. Use **Unlock saved key** if access is needed; if macOS asks, choose **Always Allow** for this app. Repeated installs with different signing identities can require consent again. Builds do not embed developer `.env` credentials.
 - **Local · Ollama**: follow [the local setup guide](docs/LOCAL-AI.md), refresh models, choose a downloaded model, and test both connections. No Gemini key is needed. Choose the spoken language in the Whisper settings separately from your summary language.
 
-## Windows source builds (experimental)
+## Windows 11 · Tauri and Rust
 
 Requires Windows 11 x64, Node.js 22+, Rust stable and Visual Studio Build Tools with Desktop development with C++. In an MSVC developer PowerShell:
 
 ```powershell
 cd desktop
 npm ci
-./scripts/build-sidecar.ps1
 npm run tauri build -- --bundles nsis
 ```
 
-The Windows sidecar uses process-excluding WASAPI loopback. The manual [release workflow](.github/workflows/windows-release.yml) requires an Authenticode certificate and fails when signing credentials are absent. A Windows build passing in CI does not replace a microphone and loopback test on real hardware.
+Windows call audio runs inside the Rust app using WASAPI process loopback, excluding MeetingAI and its WebView2 processes. There is no separate audio executable. Launching MeetingAI again focuses the existing window. Microsoft WebView2 still uses its normal browser subprocesses.
+
+The [Windows installer workflow](.github/workflows/windows-build.yml) produces an NSIS installer, installs it, and checks native window startup and duplicate-launch handling. Download the `MeetingAI-Windows-x64-preview` artifact from a successful run. This preview is **unsigned** and Windows may show SmartScreen warnings. The separate [signed release workflow](.github/workflows/windows-release.yml) requires an Authenticode certificate. [Windows packaging and testing](docs/WINDOWS.md).
 
 ## Development and tests
 
@@ -75,12 +76,12 @@ cd src-tauri
 cargo test --lib
 ```
 
-Build the native sidecar first. Local inference integration tests are opt-in and require running services; [test instructions](docs/LOCAL-AI.md#test-the-connectors). Gemini integration tests require an explicitly supplied `GEMINI_API_KEY`.
+On macOS, build the Swift audio helper first. Local inference integration tests are opt-in and require running services; [test instructions](docs/LOCAL-AI.md#test-the-connectors). Gemini integration tests require an explicitly supplied `GEMINI_API_KEY`.
 
 ```text
 desktop/           Tauri 2 · React · TypeScript · Rust
 desktop/sidecar/   Swift system-audio capture
-desktop/sidecar-windows/  WASAPI capture
+desktop/src-tauri/src/windows_audio.rs  In-process Rust WASAPI capture
 web/               Static Next.js website
 ```
 

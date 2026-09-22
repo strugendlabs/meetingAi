@@ -45,10 +45,6 @@ jobs:
       - name: Run frontend tests
         run: npm test
 
-      - name: Build Windows audio sidecar
-        shell: pwsh
-        run: ./scripts/build-sidecar.ps1
-
       - name: Import trusted Authenticode certificate
         shell: pwsh
         env:
@@ -77,18 +73,13 @@ jobs:
             -Append
           Remove-Item $pfxPath -Force
 
-      - name: Sign Windows audio sidecar
-        shell: pwsh
-        run: ./scripts/sign-windows.ps1 ./src-tauri/binaries/system-audio-x86_64-pc-windows-msvc.exe
-
       - name: Build signed NSIS installer
-        run: npm run tauri build -- --config src-tauri/tauri.windows.conf.json --bundles nsis
+        run: npm run tauri build -- --config src-tauri/tauri.windows.signed.conf.json --bundles nsis
 
       - name: Verify release signatures
         shell: pwsh
         run: |
           $targets = @(
-            "./src-tauri/binaries/system-audio-x86_64-pc-windows-msvc.exe",
             "./src-tauri/target/release/meetingai.exe"
           )
           $targets += Get-ChildItem "./src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" |

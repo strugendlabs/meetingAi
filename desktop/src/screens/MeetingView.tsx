@@ -29,7 +29,7 @@ import { isLocalAI } from "../lib/localAi";
 import { languageLabel } from "../lib/languages";
 import { MeetingSession, type MeetingStatus } from "../lib/meetingSession";
 import { getSettings } from "../lib/settings";
-import { isTauri } from "../lib/tauri";
+import { isTauri, safeInvoke } from "../lib/tauri";
 import { transcriptTurns } from "../lib/transcript";
 import type {
   Meeting,
@@ -318,6 +318,17 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
   const segmentsRef = useRef<TranscriptSegment[]>([]);
   const apiKeyRef = useRef<string | null>(null);
 
+  // Saved meetings are readable without credentials. Resolve a key only when
+  // starting capture or when the user asks for an AI operation.
+  const ensureGeminiKey = useCallback(async () => {
+    if (apiKeyRef.current) return { key: apiKeyRef.current, error: null };
+    const resolved = await readGeminiKey();
+    apiKeyRef.current = resolved.key;
+    setApiKey(resolved.key);
+    setApiKeyError(resolved.error);
+    return resolved;
+  }, []);
+
   const upsertSegment = useCallback((seg: TranscriptSegment) => {
     // Update the ref synchronously so Stop's summary includes final callbacks
     // even before React renders their state updates.
@@ -337,11 +348,9 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
     let localSession: MeetingSession | null = null;
 
     (async () => {
-      const { key, error: keyErr } = await readGeminiKey();
-      if (cancelled) return;
-      apiKeyRef.current = key;
-      setApiKey(key);
-      setApiKeyError(keyErr);
+      apiKeyRef.current = null;
+      setApiKey(null);
+      setApiKeyError(null);
 
       let full: Awaited<ReturnType<typeof getMeetingFull>>;
       try {
@@ -382,6 +391,11 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
         return;
       }
 
+      const { key, error: keyErr } = await readGeminiKey();
+      if (cancelled) return;
+      apiKeyRef.current = key;
+      setApiKey(key);
+      setApiKeyError(keyErr);
       setPhase("live");
       setSideTab("notes");
       if (!key && !isLocalAI(getSettings())) {
@@ -430,6 +444,15 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
     setLoadAttempt((n) => n + 1);
   }, []);
 
+  const unlockAndRetry = useCallback(async () => {
+    try {
+      await safeInvoke<boolean>("keychain_unlock", { key: "gemini_api_key" });
+      retryLoad();
+    } catch (e) {
+      setApiKeyError(e instanceof Error ? e.message : String(e));
+    }
+  }, [retryLoad]);
+
   // Meeting timer tick.
   useEffect(() => {
     if (phase !== "live") return;
@@ -440,11 +463,6 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
   const runSummarize = useCallback(async () => {
     const finals = transcriptTurns(segmentsRef.current.filter((s) => s.final));
     if (finals.length === 0) return;
-    const key = apiKeyRef.current;
-    if (!key && !isLocalAI(getSettings())) {
-      setSummaryError("Add a Gemini API key in Settings to generate summaries.");
-      return;
-    }
     setSummarizing(true);
     setSummaryError(null);
     setSummarySaveFailed(false);
@@ -453,6 +471,10 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
       .join("\n");
     const language = languageLabel(getSettings().userLanguage);
     try {
+      const { key, error } = await ensureGeminiKey();
+      if (!key && !isLocalAI(getSettings())) {
+        throw new Error(error ? "Unlock your saved Gemini key in Settings to generate summaries." : "Add a Gemini API key in Settings to generate summaries.");
+      }
       let out: Awaited<ReturnType<typeof summarizeWithProvider>>;
       try {
         out = await summarizeWithProvider(key, getSettings(), transcript, language);
@@ -470,7 +492,7 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
     } finally {
       setSummarizing(false);
     }
-  }, [meetingId]);
+  }, [meetingId, ensureGeminiKey]);
 
   const handleStop = useCallback(async () => {
     if (stopping) return;
@@ -623,8 +645,6 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
 
   const translateTranscript = useCallback(async () => {
     if (translatingRef.current) return;
-    const key = apiKeyRef.current;
-    if (!key && !isLocalAI(getSettings())) { setTranslationError("Add your Gemini API key in Settings to translate this meeting."); return; }
     const pending = segmentsRef.current.filter((s) => s.final && s.text.trim() && !s.translatedText);
     const translationRun = ++translationRunRef.current;
     translatingRef.current = true;
@@ -632,6 +652,10 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
     setShowTranslations(true);
     let completed = 0;
     try {
+      const { key, error } = await ensureGeminiKey();
+      if (!key && !isLocalAI(getSettings())) {
+        throw new Error(error ? "Unlock your saved Gemini key in Settings to translate this meeting." : "Add your Gemini API key in Settings to translate this meeting.");
+      }
       for (const segment of pending) {
         setTranslationProgress(`Translating ${completed + 1} of ${pending.length}…`);
         const translatedText = await translateWithProvider(key, getSettings(), segment.text, languageLabel(getSettings().userLanguage));
@@ -646,7 +670,7 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
       translatingRef.current = false;
       setTranslationProgress(null);
     }
-  }, [upsertSegment]);
+  }, [upsertSegment, ensureGeminiKey]);
 
   if (phase === "loading") {
     return (
@@ -780,16 +804,16 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-300/60 bg-amber-50 px-4 py-2 dark:border-amber-500/20 dark:bg-amber-500/10">
           <p className="text-xs text-amber-800 dark:text-amber-300" title={apiKeyError ?? undefined}>
             {apiKeyError
-              ? "Couldn't read your Gemini API key from the Keychain — transcription and translation are off for this meeting. Grant Keychain access when prompted, then retry."
+              ? "Your saved Gemini key needs access. Unlock it to start transcription. If macOS asks, choose Always Allow to remember this app."
               : "No Gemini API key — transcription and translation are off for this meeting."}
           </p>
           {apiKeyError ? (
             <button
               type="button"
-              onClick={retryLoad}
+              onClick={() => void unlockAndRetry()}
               className="shrink-0 text-xs font-semibold text-amber-800 underline-offset-2 hover:underline dark:text-amber-300"
             >
-              Retry
+              Unlock saved key
             </button>
           ) : (
             <button

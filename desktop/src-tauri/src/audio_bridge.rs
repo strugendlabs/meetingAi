@@ -433,13 +433,19 @@ pub async fn open_audio_settings(source: String) -> Result<(), String> {
 /// resulting EOF as a requested stop, not an unexpected death.
 #[tauri::command]
 pub async fn stop_system_capture() -> Result<(), String> {
-    let mut guard = SIDECAR.lock().map_err(|e| e.to_string())?;
+    shutdown_capture();
+    Ok(())
+}
+
+pub fn shutdown_capture() {
+    let Ok(mut guard) = SIDECAR.lock() else {
+        return;
+    };
     if let Some(state) = guard.take() {
         let mut child = state.child;
         let _ = child.kill();
         let _ = child.wait();
     }
-    Ok(())
 }
 
 /// Runs `system-audio --check`: exit 0 means capture is available; exit 2 is
