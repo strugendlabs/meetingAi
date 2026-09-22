@@ -112,6 +112,7 @@ fn bind_loopback_server() -> Result<(tiny_http::Server, u16), String> {
         .map_err(|e| format!("could not start loopback server: {e}"))?;
     let port = match server.server_addr() {
         tiny_http::ListenAddr::IP(addr) => addr.port(),
+        #[cfg(unix)]
         _ => return Err("loopback server bound to a non-IP address".to_string()),
     };
     Ok((server, port))
@@ -244,7 +245,7 @@ pub(crate) fn parse_redirect_query(
 /// so a newer `google_oauth_start` invocation can supersede this one and
 /// free its port promptly instead of holding it for the full timeout.
 fn wait_for_redirect(
-    server: tiny_http::Server,
+    server: &tiny_http::Server,
     expected_state: String,
     my_generation: u64,
 ) -> Result<String, String> {
@@ -344,7 +345,7 @@ pub async fn google_oauth_start(
 
     // tiny_http is blocking — wait on a blocking thread, not a runtime worker.
     let code = tauri::async_runtime::spawn_blocking(move || {
-        wait_for_redirect(server, state, my_generation)
+        wait_for_redirect(&server, state, my_generation)
     })
     .await
     .map_err(|e| format!("loopback task failed: {e}"))?
@@ -515,7 +516,7 @@ mod tests {
         ATTEMPT_GENERATION.fetch_add(1, Ordering::SeqCst);
 
         let start = std::time::Instant::now();
-        let result = wait_for_redirect(server, "state".to_string(), my_generation);
+        let result = wait_for_redirect(&server, "state".to_string(), my_generation);
         let elapsed = start.elapsed();
 
         let err = result.expect_err("superseded attempt must not succeed");
@@ -525,6 +526,9 @@ mod tests {
             elapsed < Duration::from_secs(2),
             "took too long: {elapsed:?}"
         );
+        // Measure cancellation separately from tiny_http's destructor, which
+        // makes a blocking TCP connection to wake its listener on Windows.
+        drop(server);
     }
 
     #[test]
