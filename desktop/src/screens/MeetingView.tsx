@@ -869,6 +869,7 @@ export default function MeetingView({ meetingId }: { meetingId: string }) {
                     onRegenerate={() => void runSummarize()}
                     regenerating={summarizing}
                   />
+                  {summaryError && <p role="alert" className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">{summaryError}</p>}
                   {summarySaveFailed && (
                     <p
                       role="alert"
